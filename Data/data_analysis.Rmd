@@ -1,0 +1,160 @@
+---
+title: "Fish Market Data Exploration & Analysis"
+author: "Keith Kutsuma"
+date: "9/30/2020"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE, echo=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+The purpose of this dataset is to predict the weight of fish based on visual cues of the fish. This will allow for farmers to predict the weights of the fish. In addition to biologist to estimate weight of fish to determine the health of the species. For example when salmon cross dams counting and estimating weight may help scientist protect the species.
+
+## Step 1: Initialize packages & Directory
+```{r, warning=FALSE, error=FALSE, message=FALSE}
+library(tidyverse)
+library(plotly)
+library(heatmaply)
+library(kableExtra)
+
+current_path = rstudioapi::getActiveDocumentContext()$path 
+setwd(dirname(current_path ))
+# print( getwd() )
+```
+
+## Step 2: Load Dataset
+
+After loading the dataset we'll look at the variable's, their meanings and types.
+
+```{r}
+ds <- read.csv("Fish.csv", stringsAsFactors = T)
+
+# Rename Species column name due to naming issues.
+names(ds)[1] <- "Species"
+
+summary(ds)
+```
+
+From the Journal of Statistics Education & Kaggle Dataset Creator
+```{r, warning=FALSE, message=FALSE, echo=FALSE}
+colnames <- c("Variable", "Description", "Unit", "Type")
+ds_desc <- read_csv("var_desc.csv", col_names = colnames)
+kable(ds_desc) %>%
+  kable_material(c("striped"))
+```
+
+## Step 3: Observe Data
+
+For this step we will look at
+
+*   Mean, Median, mode of certain categories
+*   Observe outliers in certain categories
+*   Observe graphs of data to Weight
+
+```{r}
+# Allow for unique identification of each fish
+ds <- ds %>%  mutate(UID = 1:159)
+```
+
+```{r, warning=FALSE, message=FALSE}
+# Set factor order based on amount in summary
+ds$Species <- factor(ds$Species, level = c("Perch", "Bream", "Roach", "Pike", "Smelt", "Parkki", "Whitefish"))
+
+species_bar <- plot_ly(ds,
+                       x = ~Species,
+                       type = "histogram") %>% 
+              layout( title = "Count of Fish by Species",
+                      yaxis = list(title = "Amount of Fish"))
+species_bar
+```
+
+```{r}
+weight_box <- plot_ly(ds,
+                      y = ~Weight,
+                      type = "box",
+                      text = paste0("UID: ", ds$UID,"\nWeight: ", ds$Weight," (g)"),
+                      name = "Weight") %>% 
+              layout(title = "Boxplot of Fish Weights")
+weight_box
+```
+```{r}
+length_box <- plot_ly(ds,
+                      y = ~Length1,
+                      type = "box",
+                      text = paste0("UID: ", ds$UID,"\nLength: ", ds$Length1," (cm)"),
+                      name = "Length1") %>% 
+              add_trace(y = ~Length2,
+                        name = "Length2",
+                        text = paste0("UID: ", ds$UID,"\nLength: ", ds$Length2," (cm)"),
+                        name = "Length2") %>% 
+              add_trace(y = ~Length3,
+                        name = "Length3",
+                        text = paste0("UID: ",
+                                      ds$UID,"\nLength: ",
+                                      ds$Length3," (cm)"),
+                        name = "Length3") %>% 
+              layout(title = "Boxplot of Fish Lengths")
+length_box
+```
+
+Looking at these boxplots, it looks as if there are outliers in the fish with UID's of 143, 144 and 145. I would like to see what these points look like on a graph.
+
+I am going to create a dotplot using Length3 and Weight. My reason for Length3 is because Length3 if the length of the whole fish, resulting with less bias than using only part of the fish's length.
+
+```{r, message=FALSE}
+outliers <- ds %>%  
+            filter(UID > 142) %>%
+            filter(UID < 146)
+
+length3_dotplot <- plot_ly(ds,
+                           y = ~Weight,
+                           x = ~Length3,
+                           color = ~Species,
+                           text = ~paste("Species: ", Species,"<br>Weight: ", Weight, "( g)",
+                                         "<br>Length: ", Length3, " (cm)",
+                                         "<br>UID: ", UID)) %>% 
+                  layout(title = "Weight vs Length of Fish")
+length3_dotplot
+```
+
+```{r}
+weight_cross_outlier <- ggplot(ds, aes(y = Weight, x = Length3)) +
+                        geom_point() +
+                        geom_point(data = outliers, aes(y = Weight, x = Length3, colour = "red")) +
+                        ggtitle("Fish Outliers on Scatter Plot") +
+                        theme(legend.position = "none")
+
+weight_cross_outlier
+```
+
+As we can see There are three pike that are much larger than the rest of the fish, so we are going to remove them from the dataset. In addition When looking at the box plots there is a fish, _(uid 41)_, with zero weight, so this fish will also be removed.
+
+## Step 4: Data Transformation.
+
+```{r}
+ds_trimm <- ds %>% 
+  filter(UID != 143 & UID != 144 & UID != 145 & UID != 41)
+
+# Write trimmed dataframe to csv
+# write_csv(ds_trimm, "Fish_trimmed.csv")
+```
+
+## Step 5: Correlation
+
+```{r}
+# Correlation of non-categorical/UID variables
+corr_data <- cor(ds_trimm[,6:2], use = "everything")
+head(corr_data)
+
+# Correlation to Weight
+print(corr_data[,5])
+```
+
+```{r}
+heatmaply_cor(corr_data, xlab = "Features", ylab = "Features", k_col = 2, k_row = 2, main = "Fish Correlation Plot")
+```
+
+Here we have the correlation data, and since we are predicting weight those are the numbers we are looking at. Based on this data it can help determine which variables we want to use depending on the model and model types.
